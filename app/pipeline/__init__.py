@@ -1,0 +1,1 @@
+"""Pipeline package — orchestration modules."""
