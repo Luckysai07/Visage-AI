@@ -76,6 +76,7 @@ class FaceDetector:
             "confidences": [],
             "faces": [],
             "face_images": [],
+            "face_images_loose": [],
             "count": 0,
         }
 
@@ -94,17 +95,38 @@ class FaceDetector:
         if not valid_indices:
             return result
 
-        # ── Step 3: Crop aligned face tensors ─────────────────────────────
-        face_tensors = self.mtcnn(image)  # Returns tensor or None
+        # ── Step 3: Crop aligned face tensors (for Search/Emotion) ────────
+        face_tensors = self.mtcnn(image)
         if face_tensors is None:
             return result
 
-        # If only one face, MTCNN returns (3, H, W); wrap in list
         if face_tensors.dim() == 3:
             face_tensors = face_tensors.unsqueeze(0)
 
-        # ── Step 4: Convert tensors back to PIL images ─────────────────────
+        # ── Step 4: Crop loose faces (for Age/Gender) ────────────────────
+        from app.utils.alignment import warp_face
         face_images = self._tensors_to_pil(face_tensors)
+        face_images_loose = []
+        for i, box in enumerate(boxes):
+            # Create an Aligned Loose Crop with 40% margin
+            lms = landmarks[i] if landmarks is not None else None
+            if lms is not None:
+                # Use our new warped alignment with 0.4 margin
+                loose_pil = warp_face(
+                    image, 
+                    lms, 
+                    target_size=settings.IMAGE_SIZE, 
+                    margin=0.4
+                )
+            else:
+                # Fallback to simple crop if landmarks missing
+                x1, y1, x2, y2 = box
+                w, h = x2 - x1, y2 - y1
+                lx1, ly1 = max(0, x1 - w*0.4), max(0, y1 - h*0.4)
+                lx2, ly2 = min(image.width, x2 + w*0.4), min(image.height, y2 + h*0.4)
+                loose_pil = image.crop((lx1, ly1, lx2, ly2)).resize((settings.IMAGE_SIZE, settings.IMAGE_SIZE), Image.LANCZOS)
+                
+            face_images_loose.append(loose_pil)
 
         # ── Step 5: Assemble results ───────────────────────────────────────
         for idx, orig_idx in enumerate(valid_indices):
@@ -115,8 +137,11 @@ class FaceDetector:
                 landmarks[orig_idx] if landmarks is not None else []
             )
             result["confidences"].append(float(probs[orig_idx]))
-            result["faces"].append(face_tensors[idx])
-            result["face_images"].append(face_images[idx])
+            result["faces"].append(face_tensors[idx])              # Aligned tensor
+            result["face_images"].append(face_images[idx])        # Aligned PIL
+            result["face_images_loose"].append(face_images_loose[idx]) # Loose PIL
+            # MTCNN align=True guarantees alignment if landmarks were found
+            result.setdefault("is_aligned", []).append(True)
 
         result["count"] = len(result["boxes"])
         logger.debug(f"Detected {result['count']} face(s).")
@@ -141,6 +166,7 @@ class FaceDetector:
             "confidence": all_faces["confidences"][best_idx],
             "face":       all_faces["faces"][best_idx],
             "face_image": all_faces["face_images"][best_idx],
+            "face_image_loose": all_faces["face_images_loose"][best_idx],
         }
 
     @staticmethod

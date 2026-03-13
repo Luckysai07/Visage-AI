@@ -82,6 +82,7 @@ async def analyze_image(
     filter_emotion:   Optional[str] = Form(None, description="Filter retrieval by emotion"),
     filter_age_min:   Optional[int] = Form(None, description="Minimum age filter"),
     filter_age_max:   Optional[int] = Form(None, description="Maximum age filter"),
+    store_in_db:      bool          = Form(True, description="Whether to store the detected faces in the database"),
     pipeline = Depends(get_pipeline),
 ):
     """
@@ -130,6 +131,7 @@ async def analyze_image(
             filter_emotion=filter_emotion,
             filter_age_min=filter_age_min,
             filter_age_max=filter_age_max,
+            store_in_db=store_in_db,
         )
     except Exception as e:
         logger.exception("Pipeline error")
@@ -153,6 +155,7 @@ async def analyze_image(
             present_attributes=f.get("present_attributes"),
             attribute_scores=f.get("attribute_scores"),
             similar_images=similar,
+            search_score=f.get("search_score", 0.0),
             heatmap_emotion=f.get("heatmap_emotion"),
             heatmap_attribute=f.get("heatmap_attribute"),
         )
@@ -170,13 +173,17 @@ async def analyze_image(
 
 @router.post("/search", tags=["Retrieval"])
 async def search_by_attributes(
-    request:  SearchRequest,
-    file:     Optional[UploadFile] = File(None, description="Optional query face image"),
+    file:             Optional[UploadFile] = File(None, description="Optional query face image"),
+    gender:           Optional[str]        = Form(None),
+    emotion:          Optional[str]        = Form(None),
+    age_min:          Optional[int]        = Form(None),
+    age_max:          Optional[int]        = Form(None),
+    top_k:            int                  = Form(10),
     pipeline  = Depends(get_pipeline),
 ):
     """
     Search the database by:
-    - Attribute constraints (gender, emotion, age range, CelebA attributes)
+    - Attribute constraints (gender, emotion, age range)
     - Optionally combined with a query face image for embedding-based similarity
     """
     query_embedding = None
@@ -185,7 +192,9 @@ async def search_by_attributes(
         content = await file.read()
         from app.utils.image_utils import bytes_to_pil
         pil_img = bytes_to_pil(content)
-        detection = pipeline.detector.detect_primary(pil_img)
+        
+        # Use RCNN detector for high-quality search detection
+        detection = pipeline.rcnn_detector.detect_primary(pil_img)
         if detection is not None:
             query_embedding = pipeline.embedding.extract(detection["face_image"])
         else:
@@ -194,21 +203,19 @@ async def search_by_attributes(
     if query_embedding is not None:
         results = pipeline.searcher.search(
             query_embedding=query_embedding,
-            k=request.top_k,
-            gender=request.gender,
-            emotion=request.emotion,
-            age_min=request.age_min,
-            age_max=request.age_max,
-            attributes=request.attributes,
+            k=top_k,
+            gender=gender,
+            emotion=emotion,
+            age_min=age_min,
+            age_max=age_max,
         )
     else:
         results = pipeline.searcher.search_by_attributes_only(
-            gender=request.gender,
-            emotion=request.emotion,
-            age_min=request.age_min,
-            age_max=request.age_max,
-            attributes=request.attributes,
-            limit=request.top_k,
+            gender=gender,
+            emotion=emotion,
+            age_min=age_min,
+            age_max=age_max,
+            limit=top_k,
         )
 
     return {"results": results, "count": len(results)}
@@ -234,8 +241,9 @@ async def build_database(
         raise HTTPException(status_code=400, detail=f"Directory not found: {request.image_dir}")
 
     # Inject shared models into builder to avoid re-loading
-    builder._detector   = pipeline.detector
-    builder._age_gender = pipeline.age_gender
+    builder._detector      = pipeline.detector
+    builder._rcnn_detector = pipeline.rcnn_detector
+    builder._age_gender    = pipeline.age_gender
     builder._emotion    = pipeline.emotion
     builder._attribute  = pipeline.attribute
     builder._embedding  = pipeline.embedding

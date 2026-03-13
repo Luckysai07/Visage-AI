@@ -31,11 +31,25 @@ class Settings(BaseSettings):
     EMOTION_WEIGHTS: Path = WEIGHTS_DIR / "emotion_model.pth"
     ATTRIBUTE_WEIGHTS: Path = WEIGHTS_DIR / "attribute_model.pth"
 
+    # ── RCNN (Faster R-CNN) Face Detector ──────────────────────────────────────
+    RCNN_WEIGHTS: Path = WEIGHTS_DIR / "rcnn_face_model.pth"  # fine-tuned face weights
+    RCNN_CONFIDENCE_THRESHOLD: float = 0.7   # minimum score to accept a detection
+    RCNN_USE_AS_DETECTOR: bool = True         # True = RCNN primary, MTCNN fallback
+
+    # ── Phase 3: Embedding Fine-tuning ────────────────────────────────────────
+    EMBEDDING_WEIGHTS: Path = WEIGHTS_DIR / "face_embedding_best.pth"
+
     # ── Database ───────────────────────────────────────────────────────────────
     DATABASE_DIR: Path = BASE_DIR / "data" / "database"
     SQLITE_DB_PATH: Path = DATABASE_DIR / "face_database.db"
     FAISS_INDEX_PATH: Path = DATABASE_DIR / "face_index.faiss"
     FAISS_ID_MAP_PATH: Path = DATABASE_DIR / "faiss_id_map.npy"
+
+    # ── Supabase ──────────────────────────────────────────────────────────────
+    USE_SUPABASE: bool = True     # Toggle between local SQLite and cloud Supabase
+    SUPABASE_URL: str = ""         # Set in .env
+    SUPABASE_KEY: str = ""         # Set in .env
+    SUPABASE_BUCKET: str = "face-images"
 
     # ── Embeddings ─────────────────────────────────────────────────────────────
     EMBEDDING_DIM: int = 512       # InceptionResnetV1 output dimension
@@ -46,8 +60,8 @@ class Settings(BaseSettings):
     RETRIEVAL_MAX_CANDIDATES: int = 1000  # Max candidates after attribute filter
 
     # ── API ────────────────────────────────────────────────────────────────────
-    API_HOST: str = "0.0.0.0"
-    API_PORT: int = 8000
+    API_HOST: str = "127.0.0.1"
+    API_PORT: int = 8001
     MAX_UPLOAD_SIZE_MB: int = 10
     UPLOAD_DIR: Path = BASE_DIR / "data" / "uploads"
     RESULTS_DIR: Path = BASE_DIR / "data" / "results"

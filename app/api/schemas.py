@@ -26,6 +26,7 @@ class SimilarImage(BaseModel):
     face_db_id:   int
     image_id:     str
     image_path:   str
+    storage_url:  Optional[str]   = None
     similarity:   float = Field(description="Cosine similarity score, 0–1")
     age:          Optional[int]   = None
     gender:       Optional[str]   = None
@@ -55,6 +56,7 @@ class FaceResult(BaseModel):
 
     # Level 3 — Retrieval
     similar_images:       List[SimilarImage] = Field(default_factory=list)
+    search_score:         float = 0.0
 
     # Phase 5 — Explainability
     heatmap_emotion:      Optional[str] = Field(None, description="Base64 JPEG Grad-CAM heatmap")

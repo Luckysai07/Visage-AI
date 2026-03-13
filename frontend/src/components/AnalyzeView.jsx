@@ -3,7 +3,7 @@ import { UploadCloud, Loader2, Sparkles, Activity, User, RefreshCcw, ChevronRigh
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 
-const API = 'http://localhost:8000/api';
+const API = 'http://localhost:8001/api';
 
 export default function AnalyzeView() {
     const [file, setFile] = useState(null);
@@ -12,6 +12,7 @@ export default function AnalyzeView() {
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
     const [drag, setDrag] = useState(false);
+    const [storeInDb, setStoreInDb] = useState(true);
 
     const reset = () => { setFile(null); setPreview(null); setResult(null); setError(null); };
 
@@ -37,6 +38,7 @@ export default function AnalyzeView() {
         fd.append('file', file);
         fd.append('generate_heatmap', 'true');
         fd.append('top_k', '5');
+        fd.append('store_in_db', storeInDb ? 'true' : 'false');
         try {
             const { data } = await axios.post(`${API}/analyze`, fd);
             setResult(data);
@@ -58,7 +60,7 @@ export default function AnalyzeView() {
                         AI Face <span className="text-gradient">Analytics</span>
                     </h1>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '16px', maxWidth: '480px', margin: '0 auto' }}>
-                        Upload a face photo to detect age, gender, emotion, and facial attributes using deep learning.
+                        Upload a face photo to detect age, gender, emotion, and facial attributes using <strong>Faster R-CNN</strong> and deep learning.
                     </p>
                 </motion.div>
             </div>
@@ -95,13 +97,29 @@ export default function AnalyzeView() {
             </motion.div>
 
             {preview && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginTop: '24px', display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                    <button className="secondary-button" onClick={reset}>Clear</button>
-                    <button className="primary-button" onClick={analyze} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Sparkles size={16} />
-                        Analyze Face
-                        <ChevronRight size={16} />
-                    </button>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+
+                    {/* Store in DB Toggle */}
+                    <div className="card" onClick={() => setStoreInDb(!storeInDb)} style={{ cursor: 'pointer', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid var(--border-color)', borderRadius: '12px', background: storeInDb ? 'rgba(99, 102, 241, 0.05)' : 'transparent', transition: 'all 0.2s' }}>
+                        <div style={{ width: '40px', height: '20px', background: storeInDb ? 'var(--accent-light)' : '#444', borderRadius: '10px', position: 'relative', transition: 'background 0.3s' }}>
+                            <motion.div
+                                animate={{ x: storeInDb ? 22 : 2 }}
+                                style={{ width: '16px', height: '16px', borderRadius: '50%', background: 'white', position: 'absolute', top: 2 }}
+                            />
+                        </div>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: storeInDb ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                            Save results to searchable database
+                        </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                        <button className="secondary-button" onClick={reset}>Clear</button>
+                        <button className="primary-button" onClick={analyze} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Sparkles size={16} />
+                            Analyze Face
+                            <ChevronRight size={16} />
+                        </button>
+                    </div>
                 </motion.div>
             )}
 
@@ -140,7 +158,7 @@ export default function AnalyzeView() {
                 </div>
             </div>
             <h3 style={{ fontSize: '20px' }}>Analyzing Face<span className="text-gradient">…</span></h3>
-            <p style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>Running MTCNN detection + deep feature extraction</p>
+            <p style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>Running Faster R-CNN detection + deep feature extraction</p>
         </div>
     );
 
@@ -150,9 +168,14 @@ export default function AnalyzeView() {
             <div className="results-header">
                 <div>
                     <h2 style={{ fontSize: '24px' }}>Analysis <span className="text-gradient">Results</span></h2>
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', marginTop: '4px' }}>
-                        {result.faces?.length ?? 0} face{result.faces?.length !== 1 ? 's' : ''} detected
-                    </p>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                        <p style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>
+                            {result.faces?.length ?? 0} face{result.faces?.length !== 1 ? 's' : ''} detected
+                        </p>
+                        <span className="format-tag" style={{ fontSize: '10px', padding: '2px 8px' }}>
+                            Powered by {result.detector_used || 'Faster R-CNN'}
+                        </span>
+                    </div>
                 </div>
                 <button className="secondary-button" onClick={reset} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <RefreshCcw size={14} /> New Analysis
@@ -231,6 +254,35 @@ export default function AnalyzeView() {
                                     <div className="attr-grid">
                                         {face.present_attributes.map(attr => (
                                             <span key={attr} className="attr-chip">{attr.replace(/_/g, ' ')}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Matching Identities */}
+                            {face.similar_images?.length > 0 && (
+                                <div className="card">
+                                    <div className="card-label"><User size={14} /> Matching Identities</div>
+                                    <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px' }}>
+                                        {face.similar_images.map((sim, idx) => (
+                                            <div key={idx} style={{ flex: '0 0 80px', textAlign: 'center' }}>
+                                                <div style={{
+                                                    width: '80px', height: '80px', borderRadius: '12px',
+                                                    backgroundColor: 'var(--bg-card)', overflow: 'hidden',
+                                                    border: '1px solid var(--border-color)', marginBottom: '4px'
+                                                }}>
+                                                    {sim.storage_url ? (
+                                                        <img src={sim.storage_url} alt="Similar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    ) : (
+                                                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                            <User size={20} style={{ color: 'var(--text-tertiary)' }} />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: '10px', color: 'var(--accent-light)', fontWeight: 600 }}>
+                                                    {(sim.similarity * 100).toFixed(0)}%
+                                                </div>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>

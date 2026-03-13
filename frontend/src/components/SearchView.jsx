@@ -3,7 +3,7 @@ import { Search, SlidersHorizontal, UploadCloud, Loader2, User, Heart, Image } f
 import { motion } from 'framer-motion';
 import axios from 'axios';
 
-const API = 'http://localhost:8000/api';
+const API = 'http://localhost:8001/api';
 
 export default function SearchView() {
     const [file, setFile] = useState(null);
@@ -12,7 +12,6 @@ export default function SearchView() {
     const [results, setResults] = useState(null);
     const [error, setError] = useState(null);
 
-    // Filters
     const [gender, setGender] = useState('');
     const [emotion, setEmotion] = useState('');
     const [ageMin, setAgeMin] = useState('');
@@ -34,6 +33,11 @@ export default function SearchView() {
         try {
             const { data } = await axios.post(`${API}/search`, fd);
             setResults(data.results || []);
+            // Give React a moment to render then scroll
+            setTimeout(() => {
+                const el = document.getElementById('search-results');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
         } catch (e) {
             setError(e.response?.data?.detail || e.message);
         } finally {
@@ -49,7 +53,7 @@ export default function SearchView() {
                     Find <span className="text-gradient">Similar Faces</span>
                 </h2>
                 <p style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                    Search your indexed database using facial attributes and embedding similarity
+                    Search your indexed database using <strong>Faster R-CNN</strong> detection and high-performance vector embeddings
                 </p>
             </div>
 
@@ -142,7 +146,7 @@ export default function SearchView() {
 
             {/* Empty / No Results */}
             {results !== null && results.length === 0 && (
-                <div className="center-state">
+                <div className="center-state" id="search-results">
                     <Search size={40} style={{ color: 'var(--text-tertiary)' }} />
                     <h3 style={{ color: 'var(--text-secondary)' }}>No matches found</h3>
                     <p style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
@@ -154,7 +158,7 @@ export default function SearchView() {
 
             {/* Results Grid */}
             {results !== null && results.length > 0 && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} id="search-results">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
                         <h3 style={{ fontSize: '18px' }}>
                             Found <span className="text-gradient">{results.length} matches</span>
@@ -166,8 +170,24 @@ export default function SearchView() {
                         {results.map((res, i) => (
                             <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: i * 0.04 }} className="result-card">
-                                <div className="result-card-img">
-                                    <Image size={24} />
+                                <div className="result-card-img" style={{
+                                    backgroundImage: res.storage_url ? `url(${res.storage_url})` : 'none',
+                                    backgroundSize: 'cover',
+                                    backgroundPosition: 'center',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    overflow: 'hidden'
+                                }}>
+                                    {!res.storage_url && <Image size={24} style={{ color: 'var(--text-tertiary)' }} />}
+                                    {res.storage_url && (
+                                        <motion.img
+                                            src={res.storage_url}
+                                            alt="Face"
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                            whileHover={{ scale: 1.1 }}
+                                        />
+                                    )}
                                 </div>
                                 <div className="result-card-body">
                                     {res.similarity != null && (

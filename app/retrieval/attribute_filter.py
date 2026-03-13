@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS faces (
     detection_confidence REAL,
     -- Embedding stored in FAISS; we just keep the FAISS position here
     faiss_position      INTEGER,
+    -- Storage URL (for cloud/remote storage)
+    storage_url         TEXT,
     -- Timestamps
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -67,6 +69,14 @@ class AttributeFilter:
     def _init_db(self):
         with self._get_conn() as conn:
             conn.executescript(CREATE_TABLE_SQL)
+            
+            # Migration: Add storage_url column if it doesn't exist
+            cursor = conn.execute("PRAGMA table_info(faces)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "storage_url" not in columns:
+                logger.info("Migrating faces table: Adding storage_url column")
+                conn.execute("ALTER TABLE faces ADD COLUMN storage_url TEXT")
+                
         logger.info(f"SQLite database ready at {self.db_path}")
 
     # ── Insertion ──────────────────────────────────────────────────────────────
@@ -84,6 +94,7 @@ class AttributeFilter:
         bbox: Optional[Tuple[float, float, float, float]],
         detection_confidence: Optional[float],
         faiss_position: int,
+        storage_url: Optional[str] = None,
     ) -> int:
         """Insert a face record and return its SQLite row ID."""
         attrs_json = json.dumps(attributes) if attributes else None
@@ -94,8 +105,8 @@ class AttributeFilter:
             (image_path, image_id, age, gender, gender_confidence,
              emotion, emotion_confidence, attributes,
              bbox_x1, bbox_y1, bbox_x2, bbox_y2,
-             detection_confidence, faiss_position)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             detection_confidence, faiss_position, storage_url)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """
         with self._get_conn() as conn:
             cursor = conn.execute(sql, (
@@ -104,6 +115,7 @@ class AttributeFilter:
                 emotion, emotion_confidence, attrs_json,
                 *bbox_vals,
                 detection_confidence, faiss_position,
+                storage_url
             ))
             return cursor.lastrowid
 
