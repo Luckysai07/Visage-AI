@@ -27,17 +27,30 @@ class FaissIndex:
     - index.add() appends vectors; positions are 0-indexed
     """
 
-    def __init__(self, dim: int = None):
+    def __init__(self, dim: int = None, use_hnsw: bool = True):
         self.dim = dim or settings.EMBEDDING_DIM
-        self.index: Optional[faiss.IndexFlatIP] = None
+        self.use_hnsw = use_hnsw
+        self.index: Optional[faiss.Index] = None
         self.id_map: List[int] = []   # position i → SQLite image_id
         self._initialize()
 
     def _initialize(self):
-        """Create a fresh inner-product index."""
-        self.index = faiss.IndexFlatIP(self.dim)
+        """
+        Create a fresh index. 
+        Uses IndexHNSWFlat for 'perfect' speed/accuracy tradeoff on larger datasets.
+        """
+        if self.use_hnsw:
+            # M=32 is a good balance for 512-dim vectors.
+            # MUST specify METRIC_INNER_PRODUCT for cosine similarity.
+            self.index = faiss.IndexHNSWFlat(self.dim, 32, faiss.METRIC_INNER_PRODUCT)
+            self.index.hnsw.efConstruction = 80
+            self.index.hnsw.efSearch = 256
+            logger.debug(f"Initialized FAISS IndexHNSWFlat (dim={self.dim}, metric=IP, efSearch=256)")
+        else:
+            self.index = faiss.IndexFlatIP(self.dim)
+            logger.debug(f"Initialized FAISS IndexFlatIP (dim={self.dim})")
+
         self.id_map = []
-        logger.debug(f"Initialized FAISS IndexFlatIP (dim={self.dim})")
 
     # ── Adding vectors ─────────────────────────────────────────────────────────
 
@@ -120,8 +133,25 @@ class FaissIndex:
             return []
 
         # Extract candidate embeddings
-        all_vecs = faiss.rev_swig_ptr(self.index.get_xb(), self.index.ntotal * self.dim)
-        all_vecs = np.array(all_vecs, dtype=np.float32).reshape(self.index.ntotal, self.dim)
+        # HNSW indices store vectors in self.index.storage (wrapped as generic Index)
+        try:
+            if hasattr(self.index, 'storage'):
+                source_index = faiss.downcast_index(self.index.storage)
+            else:
+                source_index = self.index
+            
+            # Using reconstruct_batch is often faster if the index supports it
+            candidate_vecs = np.array([source_index.reconstruct(int(pos)) for pos in candidate_positions], dtype=np.float32)
+        except Exception as e:
+            logger.warning(f"Fast reconstruction failed ({e}), falling back to full xb retrieval.")
+            # Fallback to slower/manual ptr retrieval if reconstruction fails
+            try:
+                all_vecs = faiss.rev_swig_ptr(source_index.get_xb(), self.index.ntotal * self.dim)
+                all_vecs = np.array(all_vecs, dtype=np.float32).reshape(self.index.ntotal, self.dim)
+                candidate_vecs = all_vecs[candidate_positions]
+            except:
+                logger.error("Critical: Could not retrieve vectors from FAISS index storage.")
+                return []
         candidate_vecs = all_vecs[candidate_positions]   # (M, dim)
 
         # Brute-force inner product among candidates

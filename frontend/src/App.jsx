@@ -22,6 +22,7 @@ export default function App() {
             <Sparkles size={16} />
           </div>
           <span className="brand-name">Visage<span className="brand-ai"> AI</span></span>
+          <span className="format-tag" style={{ marginLeft: '12px', fontSize: '11px', opacity: 0.8 }}>RCNN</span>
         </div>
 
         <nav className="tab-row">

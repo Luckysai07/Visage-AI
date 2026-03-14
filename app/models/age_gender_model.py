@@ -76,12 +76,17 @@ class AgeGenderModel:
             )
 
     @torch.no_grad()
-    def predict(self, face_image: Image.Image) -> Dict[str, Any]:
+    def predict(self, face_image: Image.Image, aligned_face: Optional[Image.Image] = None) -> Dict[str, Any]:
         """
         Predict age and gender from a face image.
+        Uses Dual-Crop strategy if aligned_face is provided:
+        1. Predict on loose crop (face_image) - better for context
+        2. Predict on tight aligned crop (aligned_face) - better for features
+        3. Average the results for stability.
 
         Args:
-            face_image: PIL RGB image of an aligned face.
+            face_image: PIL RGB image of a loose face crop (standard).
+            aligned_face: Optional PIL RGB image of a tight aligned face crop.
 
         Returns:
             {
@@ -91,13 +96,28 @@ class AgeGenderModel:
                 "age_raw":        float
             }
         """
-        tensor = pil_to_tensor(face_image).to(self.device)
+        # --- Crop 1: Loose (Current default) ---
+        tensor_loose = pil_to_tensor(face_image).to(self.device)
+        age_raw_loose, gender_logits_loose = self.model(tensor_loose)
+        
+        if aligned_face is not None:
+            # --- Crop 2: Aligned (Tight) ---
+            tensor_aligned = pil_to_tensor(aligned_face).to(self.device)
+            age_raw_aligned, gender_logits_aligned = self.model(tensor_aligned)
+            
+            # --- Average Age ---
+            age_val = (float(age_raw_loose.cpu().item()) + float(age_raw_aligned.cpu().item())) / 2.0
+            
+            # --- Average Gender Probabilities ---
+            probs_loose = torch.softmax(gender_logits_loose, dim=1)
+            probs_aligned = torch.softmax(gender_logits_aligned, dim=1)
+            gender_probs = ((probs_loose + probs_aligned) / 2.0)[0].cpu()
+        else:
+            age_val = float(age_raw_loose.cpu().item())
+            gender_probs = torch.softmax(gender_logits_loose, dim=1)[0].cpu()
 
-        age_raw, gender_logits = self.model(tensor)
-        age_val = float(age_raw.cpu().item())
         age_val = max(0.0, min(116.0, age_val))   # Clamp to valid age range
 
-        gender_probs = torch.softmax(gender_logits, dim=1)[0].cpu()
         gender_idx   = int(gender_probs.argmax().item())
         gender_conf  = float(gender_probs[gender_idx].item())
 

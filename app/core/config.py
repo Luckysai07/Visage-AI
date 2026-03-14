@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     # ── Retrieval ──────────────────────────────────────────────────────────────
     DEFAULT_TOP_K: int = 10        # Default number of similar images to return
     RETRIEVAL_MAX_CANDIDATES: int = 1000  # Max candidates after attribute filter
+    SIMILARITY_THRESHOLD: float = 0.65     # Minimum confidence to return a match
+    SIMILARITY_THRESHOLD: float = 0.65     # Minimum confidence to return a match
 
     # ── API ────────────────────────────────────────────────────────────────────
     API_HOST: str = "127.0.0.1"

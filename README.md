@@ -192,6 +192,32 @@ This launches:
 
 ---
 
+## 🔍 How to Use Face Search
+
+Our face search uses a "Perfect Alignment" pipeline powered by RCNN & HNSW for state-of-the-art accuracy.
+
+### 1. Build Your Search Index
+First, you need to "index" your images so they are searchable.
+1. Place your person images in a folder (e.g., `C:/my_photos`).
+2. Go to the **Search Tab** in the UI and click **"Index Local Directory"**.
+3. *OR* Use the API directly:
+   ```bash
+   curl -X POST http://localhost:8000/api/build-database -H "Content-Type: application/json" -d "{\"image_dir\": \"C:/my_photos\"}"
+   ```
+
+### 2. Search for a Person
+1. In the **Search View**, upload a "Query Image" (the person you are looking for).
+2. The system will detect their face, align it, and retrieve the most similar people from your index.
+3. **Pro Tip**: Use the **Attribute Filters** (Age, Gender, Emotion) to narrow down the results instantly.
+
+### 3. Fine-Tune for Perfect Accuracy
+If you want to achieve 99%+ accuracy on your specific identities:
+1. Organize your data: `data/identities/person_name/*.jpg`.
+2. Run the fine-tuner: `python training/train_embeddings.py --data data/identities`.
+3. The system will automatically use your custom weights for all future searches!
+
+---
+
 ## 🎓 Training on Kaggle (Free GPU)
 
 The models need to be fine-tuned on labeled face datasets for best accuracy. We provide ready-to-run Kaggle notebooks for all three models.

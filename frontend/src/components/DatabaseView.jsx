@@ -15,7 +15,7 @@ export default function DatabaseView() {
     const fetchStats = async () => {
         setLoadingStats(true);
         try {
-            const resp = await axios.get('http://localhost:8000/api/database/stats');
+            const resp = await axios.get('http://localhost:8001/api/database/stats');
             setStats(resp.data);
         } catch (err) {
             console.error(err);
@@ -35,7 +35,7 @@ export default function DatabaseView() {
         setBuildResult(null);
 
         try {
-            const resp = await axios.post('http://localhost:8000/api/build-database', {
+            const resp = await axios.post('http://localhost:8001/api/build-database', {
                 image_dir: buildDir,
                 clear_existing: false,
                 max_images: null

@@ -1,0 +1,21 @@
+Retrieved 5 records from Supabase:
+--------------------
+ID: 2
+ImageID: 06872391-9fd8-405e-9f7a-9331183b7931
+URL: https://ppehxcgtowuumebizckw.supabase.co/storage/v1/object/public/face-images/test_06872391-9fd8-405e-9f7a-9331183b7931.jpg
+--------------------
+ID: 3
+ImageID: 8cca772f-8dc2-4a76-9994-560d68a25327
+URL: https://ppehxcgtowuumebizckw.supabase.co/storage/v1/object/public/face-images/8cca772f-8dc2-4a76-9994-560d68a25327.jpg
+--------------------
+ID: 4
+ImageID: 3071cd06-3413-43d2-9578-e4a872155144
+URL: https://ppehxcgtowuumebizckw.supabase.co/storage/v1/object/public/face-images/3071cd06-3413-43d2-9578-e4a872155144.jpg
+--------------------
+ID: 5
+ImageID: d88bfd9f-e2e8-4b4e-a262-49b14b0422a5
+URL: https://ppehxcgtowuumebizckw.supabase.co/storage/v1/object/public/face-images/d88bfd9f-e2e8-4b4e-a262-49b14b0422a5.jpg
+--------------------
+ID: 6
+ImageID: a7f797d8-2869-4c85-b73e-2d297a0420ba
+URL: https://ppehxcgtowuumebizckw.supabase.co/storage/v1/object/public/face-images/a7f797d8-2869-4c85-b73e-2d297a0420ba.jpg

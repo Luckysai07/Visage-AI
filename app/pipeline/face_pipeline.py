@@ -186,8 +186,8 @@ class FacePipeline:
                 "confidence": round(detection["confidences"][i], 4),
                 "is_aligned": detection.get("is_aligned", [False])[i],
             }
-            # ── Age & Gender (Use Loose Crop) ───────────────────────────────
-            ag = self.age_gender.predict(face_img_loose)
+            # ── Age & Gender (Uses Dual-Crop: Loose + Aligned) ───────────────
+            ag = self.age_gender.predict(face_img_loose, aligned_face=face_img_aligned)
             face_result.update({
                 "age":               ag["age"],
                 "gender":            ag["gender"],

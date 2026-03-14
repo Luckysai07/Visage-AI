@@ -29,6 +29,27 @@ class HybridSearch:
         self.faiss_index      = faiss_index
         self.attribute_filter = attribute_filter
 
+    def _calculate_match_confidence(self, similarity: float) -> float:
+        """
+        Calibrate raw cosine similarity to an intuitive confidence percentage.
+        FaceNet (InceptionResnetV1) inner product typically:
+        - Matches: 0.7 to 0.95
+        - Non-matches: < 0.5
+        """
+        if similarity < 0.45:
+            return 0.0
+        
+        # Piecewise linear mapping for better UX
+        if similarity < 0.70:
+            # 0.45 -> 10%, 0.70 -> 75%
+            # (similarity - 0.45) / (0.70 - 0.45) * (75 - 10) + 10
+            conf = (similarity - 0.45) * 260.0 + 10.0
+        else:
+            # 0.70 -> 75%, 0.95 -> 99%
+            conf = (similarity - 0.70) * 96.0 + 75.0
+            
+        return min(max(conf, 0.0), 100.0)
+
     def search(
         self,
         query_embedding: "np.ndarray",      # (512,) float32 L2-normalized
@@ -43,27 +64,6 @@ class HybridSearch:
     ) -> List[Dict[str, Any]]:
         """
         Find the top-K most similar faces with optional attribute pre-filtering.
-
-        Args:
-            query_embedding: L2-normalized 512-dim face embedding.
-            k:               Number of results (default from config).
-            gender:          Filter by gender ("male" | "female").
-            emotion:         Filter by emotion ("happy", "neutral", ...).
-            age_min/max:     Age range filter.
-            attributes:      CelebA attribute constraints dict.
-            use_filter:      If False, skips attribute filtering (pure vector search).
-
-        Returns:
-            List of result dicts sorted by descending similarity:
-            [{
-                "image_id":        str,
-                "image_path":      str,
-                "similarity":      float,
-                "age":             int,
-                "gender":          str,
-                "emotion":         str,
-                "attributes":      dict,
-            }, ...]
         """
         import numpy as np
 
@@ -97,22 +97,24 @@ class HybridSearch:
 
         # ── Step 3: Enrich with SQLite metadata ────────────────────────────
         result_ids = [img_id for img_id, _ in raw_results]
-        score_map  = {img_id: score for img_id, score in raw_results}
-        records    = self.attribute_filter.get_by_ids(result_ids)
-
-        # Build output, keep original similarity ordering
+        # Fetch all metadata in a single batch
+        records = self.attribute_filter.get_by_ids(result_ids)
         record_by_id = {r["id"]: r for r in records}
+
         output: List[Dict[str, Any]] = []
 
         for face_id, similarity in raw_results:
             rec = record_by_id.get(face_id)
             if rec is None:
                 continue
+            
             output.append({
                 "face_db_id":  face_id,
                 "image_id":    rec.get("image_id", ""),
                 "image_path":  rec.get("image_path", ""),
+                "storage_url": rec.get("storage_url"),
                 "similarity":  round(float(similarity), 4),
+                "match_confidence": round(self._calculate_match_confidence(float(similarity)), 2),
                 "age":         rec.get("age"),
                 "gender":      rec.get("gender"),
                 "emotion":     rec.get("emotion"),
@@ -121,7 +123,7 @@ class HybridSearch:
                                 rec.get("bbox_x2"), rec.get("bbox_y2")],
             })
 
-        logger.info(f"Hybrid search returned {len(output)} results.")
+        logger.info(f"Hybrid search returned {len(output)} optimized results.")
         return output
 
     def search_by_attributes_only(

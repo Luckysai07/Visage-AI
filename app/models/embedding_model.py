@@ -31,10 +31,20 @@ class EmbeddingModel:
 
     def __init__(self, device: Optional[torch.device] = None):
         self.device = device or DEVICE
-        # Pretrained on VGGFace2 — downloads weights automatically (~100MB)
+        
+        # Pretrained on VGGFace2
         self.model = InceptionResnetV1(pretrained="vggface2").to(self.device)
+        
+        # Load custom fine-tuned weights if available
+        weights_path = settings.EMBEDDING_WEIGHTS
+        if weights_path.exists():
+            logger.info(f"Loading custom embedding weights from {weights_path}")
+            checkpoint = torch.load(str(weights_path), map_location=self.device)
+            state = checkpoint.get("model_state_dict", checkpoint)
+            self.model.load_state_dict(state)
+        
         self.model.eval()
-        logger.info(f"EmbeddingModel (InceptionResnetV1 / VGGFace2) ready on {self.device}")
+        logger.info(f"EmbeddingModel initialized on {self.device}")
 
     @torch.no_grad()
     def extract(self, face_image: Image.Image) -> np.ndarray:

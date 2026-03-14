@@ -10,6 +10,7 @@ from PIL import Image
 
 from app.core.config import settings
 from app.pipeline.face_pipeline import FacePipeline
+from app.models.rcnn_face_detector import RCNNFaceDetector
 
 # Try to use a real face if available locally, else generate a blank dummy image
 TEST_IMAGE_PATH = "tests/test_face.jpg"
@@ -33,6 +34,7 @@ def pipeline():
 def test_pipeline_initialization(pipeline):
     """Test that all models load correctly."""
     assert pipeline.detector is not None
+    assert pipeline.rcnn_detector is not None     # new: RCNN detector
     assert pipeline.age_gender is not None
     assert pipeline.emotion is not None
     assert pipeline.attribute is not None
@@ -77,3 +79,27 @@ def test_faiss_index_mock():
     assert len(results) == 1
     assert results[0][0] == 100
     assert pytest.approx(results[0][1], 0.01) == 1.0  # Self similarity should be ~1
+
+
+def test_rcnn_detector():
+    """
+    Smoke-test RCNNFaceDetector: verify the output schema on a dummy image.
+    COCO weights are downloaded automatically on first run.
+    """
+    detector = RCNNFaceDetector()
+    dummy    = Image.fromarray(
+        np.random.randint(0, 255, (300, 300, 3), dtype=np.uint8)
+    )
+    result   = detector.detect(dummy)
+
+    # Schema checks — regardless of whether any faces are found
+    assert "boxes"       in result
+    assert "landmarks"   in result
+    assert "confidences" in result
+    assert "faces"       in result
+    assert "face_images" in result
+    assert "count"       in result
+    assert isinstance(result["count"], int)
+    assert result["count"] == len(result["boxes"])
+    assert result["count"] == len(result["confidences"])
+    assert result["count"] == len(result["face_images"])

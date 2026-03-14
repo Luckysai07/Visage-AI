@@ -48,7 +48,7 @@ class RCNNFaceDetector:
         self.landmark_extractor = MTCNN(
             keep_all=True,
             device=self.device,
-            post_process=False
+            post_process=True
         )
 
         logger.info(f"RCNNFaceDetector (Two-Stage) initialized on {self.device}")

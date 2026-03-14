@@ -7,19 +7,21 @@ Batch-processes a folder of images through the full pipeline:
 import logging
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from PIL import Image
 from tqdm import tqdm
 
 from app.core.config import settings
 from app.models.face_detector import FaceDetector
+from app.models.rcnn_face_detector import RCNNFaceDetector
 from app.models.age_gender_model import AgeGenderModel
 from app.models.emotion_model import EmotionModel
 from app.models.attribute_model import AttributeModel
 from app.models.embedding_model import EmbeddingModel
 from app.retrieval.faiss_index import FaissIndex
 from app.retrieval.attribute_filter import AttributeFilter
+from app.retrieval.supabase_filter import SupabaseFilter
 from app.utils.image_utils import bytes_to_pil, load_image_pil
 
 logger = logging.getLogger(__name__)
@@ -47,16 +49,18 @@ class DatabaseBuilder:
     def __init__(
         self,
         detector:    Optional[FaceDetector]    = None,
+        rcnn_detector: Optional[RCNNFaceDetector] = None,
         age_gender:  Optional[AgeGenderModel]  = None,
         emotion:     Optional[EmotionModel]    = None,
         attribute:   Optional[AttributeModel]  = None,
         embedding:   Optional[EmbeddingModel]  = None,
         faiss_index: Optional[FaissIndex]      = None,
-        db_filter:   Optional[AttributeFilter] = None,
+        db_filter:   Optional[Union[AttributeFilter, SupabaseFilter]] = None,
     ):
         """All model arguments are optional — created lazily if not provided."""
-        self._detector   = detector
-        self._age_gender = age_gender
+        self._detector      = detector
+        self._rcnn_detector = rcnn_detector
+        self._age_gender    = age_gender
         self._emotion    = emotion
         self._attribute  = attribute
         self._embedding  = embedding
@@ -69,6 +73,12 @@ class DatabaseBuilder:
         if self._detector is None:
             self._detector = FaceDetector()
         return self._detector
+
+    @property
+    def rcnn_detector(self) -> RCNNFaceDetector:
+        if self._rcnn_detector is None:
+            self._rcnn_detector = RCNNFaceDetector()
+        return self._rcnn_detector
 
     @property
     def age_gender(self) -> AgeGenderModel:
@@ -101,9 +111,12 @@ class DatabaseBuilder:
         return self._faiss
 
     @property
-    def db(self) -> AttributeFilter:
+    def db(self) -> Union[AttributeFilter, SupabaseFilter]:
         if self._db is None:
-            self._db = AttributeFilter()
+            if settings.USE_SUPABASE:
+                self._db = SupabaseFilter()
+            else:
+                self._db = AttributeFilter()
         return self._db
 
     # ── Core processing ────────────────────────────────────────────────────────
@@ -121,24 +134,38 @@ class DatabaseBuilder:
             logger.warning(f"Failed to load {image_path}: {e}")
             return 0
 
-        detection = self.detector.detect(pil_img)
+        # Use same detection logic as FacePipeline
+        if settings.RCNN_USE_AS_DETECTOR:
+            detection = self.rcnn_detector.detect(pil_img)
+            if detection["count"] == 0:
+                detection = self.detector.detect(pil_img)
+        else:
+            detection = self.detector.detect(pil_img)
+
         if detection["count"] == 0:
             return 0
 
         added = 0
-        for i, face_img in enumerate(detection["face_images"]):
+        for i, face_img_aligned in enumerate(detection["face_images"]):
+            face_img_loose = detection["face_images_loose"][i]
             try:
-                # Predict all attributes
-                ag_result   = self.age_gender.predict(face_img)
-                emo_result  = self.emotion.predict(face_img)
-                attr_result = self.attribute.predict(face_img)
-                emb_vector  = self.embedding.extract(face_img)
+                # Aligned for search/emotion, Loose for demographics
+                ag_result   = self.age_gender.predict(face_img_loose)
+                emo_result  = self.emotion.predict(face_img_aligned)
+                attr_result = self.attribute.predict(face_img_loose)
+                emb_vector  = self.embedding.extract(face_img_aligned)
 
                 # Assign FAISS position (current size before adding)
                 faiss_pos = self.faiss_index.size
                 image_id  = str(uuid.uuid4())
 
-                # Store in SQLite
+                # Upload to Cloud if using Supabase
+                storage_url = None
+                if isinstance(self.db, SupabaseFilter):
+                    # Use aligned crop for UI
+                    storage_url = self.db.upload_face_image(face_img_aligned, image_id)
+
+                # Store in DB
                 face_db_id = self.db.insert_face(
                     image_path=str(image_path),
                     image_id=image_id,
@@ -151,6 +178,7 @@ class DatabaseBuilder:
                     bbox=tuple(detection["boxes"][i]),
                     detection_confidence=detection["confidences"][i],
                     faiss_position=faiss_pos,
+                    storage_url=storage_url,
                 )
 
                 # Add to FAISS using SQLite row ID for mapping
